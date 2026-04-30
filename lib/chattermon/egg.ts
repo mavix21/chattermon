@@ -36,19 +36,13 @@ const EGG_F5 = String.raw`
     _ _     
    / \ \    
   (  /  )   
-   \_\_/    
+   \_\_/ ·   
 `;
 
 const EGG_F6 = String.raw`
    ✨ ✨    
  ✨     ✨  
    ✨ ✨    
-`;
-
-const EGG_F7 = String.raw`
-   ✨  ✨   
- ✨      ✨ 
-   ✨  ✨   
 `;
 
 export const EGG_HATCH_FRAMES: readonly string[] = [
@@ -59,5 +53,4 @@ export const EGG_HATCH_FRAMES: readonly string[] = [
   EGG_F4,
   EGG_F5,
   EGG_F6,
-  EGG_F7,
 ] as const;
