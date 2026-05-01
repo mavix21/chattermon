@@ -40,9 +40,10 @@ const EGG_F5 = String.raw`
 `;
 
 const EGG_F6 = String.raw`
-   ✨ ✨    
- ✨     ✨  
-   ✨ ✨    
+            
+   *   *    
+ *       *  
+   *   *    
 `;
 
 export const EGG_HATCH_FRAMES: readonly string[] = [

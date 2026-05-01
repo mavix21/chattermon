@@ -8,7 +8,7 @@
 const FRAME_1 = String.raw`
     ,|.    
    (•ᴥ•)   
-   \/ \/   
+   \_|_/   
    \___/   
 `;
 
