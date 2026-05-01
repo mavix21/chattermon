@@ -14,6 +14,8 @@ export function toSnapshot(c: Chattermon): ChattermonSnapshot {
     status: c.status,
     knownMoves: [...c.knownMoves],
     friendship: c.friendship,
+    mood: c.mood,
+    lastInteractedAt: c.lastInteractedAt,
     nickname: c.nickname,
   };
 }

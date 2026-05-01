@@ -3,8 +3,10 @@ import { natureMultipliers, NatureRegistry, type Nature } from "./nature";
 import { MutationRegistry, type Mutation } from "./mutation";
 import { TraitRegistry, type Trait } from "./trait";
 import { SpeciesRegistry, type Species } from "./species";
+import { moodFromValue, MOOD_EMOJI, moodBattleModifiers } from "./mood";
 import type {
   ChattermonId,
+  MoodId,
   MoveId,
   StatusId,
 } from "./types";
@@ -28,8 +30,18 @@ export class Chattermon {
     public status: StatusId | null,
     public knownMoves: MoveId[],
     public friendship: number,            // battles fought together
+    public mood: number,                  // 0–100
+    public lastInteractedAt: number,      // epoch ms
     public nickname?: string,
   ) {}
+
+  moodId(): MoodId {
+    return moodFromValue(this.mood);
+  }
+
+  moodEmoji(): string {
+    return MOOD_EMOJI[this.moodId()];
+  }
 
   // ── Stat resolution pipeline ────────────────────────────────────────
   // Order: base → level scaling → nature → trait passive → mutation.
@@ -50,16 +62,17 @@ export class Chattermon {
     return this.hp <= 0;
   }
 
-  // Crit base 1/16, plus trait/mutation bonuses.
+  // Crit base 1/16, plus trait/mutation/mood bonuses.
   critChance(): number {
     let p = 1 / 16;
     if (this.trait.id === "keen") p += 0.1;
     if (this.mutation?.flags?.critBonus) p += this.mutation.flags.critBonus;
+    p += moodBattleModifiers(this.moodId()).critBonus;
     return p;
   }
 
   evade(): number {
-    return this.mutation?.flags?.evadeBonus ?? 0;
+    return (this.mutation?.flags?.evadeBonus ?? 0) + moodBattleModifiers(this.moodId()).evasionBonus;
   }
 
   extraStrikeChance(): number {
@@ -112,6 +125,8 @@ export function hydrateChattermon(snap: {
   status: StatusId | null;
   knownMoves: MoveId[];
   friendship: number;
+  mood?: number;
+  lastInteractedAt?: number;
   nickname?: string;
 }): Chattermon {
   return new Chattermon(
@@ -126,6 +141,8 @@ export function hydrateChattermon(snap: {
     snap.status,
     [...snap.knownMoves],
     snap.friendship,
+    snap.mood ?? 50,
+    snap.lastInteractedAt ?? Date.now(),
     snap.nickname,
   );
 }

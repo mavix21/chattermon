@@ -49,9 +49,21 @@ export class HatchService {
       null,
       species.movesAtLevel(startLevel).slice(-4),
       0,
+      50,          // mood: starts content
+      Date.now(),  // lastInteractedAt
     );
     baby.hp = baby.stats().hp;
     return baby;
+  }
+
+  /** Hatch a random chattermon from the starter-eligible pool. */
+  hatchStarter(opts: Omit<HatchOptions, "speciesId"> = {}): Chattermon {
+    const pool = SpeciesRegistry.all().filter((sp) => sp.starterEligible);
+    if (pool.length === 0) {
+      throw new Error("No starter-eligible species registered.");
+    }
+    const species = this.rng.pick(pool);
+    return this.hatch({ ...opts, speciesId: species.id });
   }
 
   private pickSpecies(biomeId: BiomeId): Species {

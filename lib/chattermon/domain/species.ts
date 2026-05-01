@@ -22,6 +22,8 @@ export abstract class Species {
   // Whether this species can appear in random encounters or hatches.
   // Set to `false` for boss/legendary chattermon that should be gated.
   readonly encounterable: boolean = true;
+  // Whether this species is eligible to be the player's first hatch (starter).
+  readonly starterEligible: boolean = false;
   abstract readonly base: BaseStats;
   abstract readonly traitPool: readonly TraitId[];
   abstract readonly learnset: readonly LearnsetEntry[];
@@ -39,7 +41,10 @@ export abstract class Species {
   }
 
   initialMoves(): MoveId[] {
-    return this.learnset.filter((l) => l.level <= 1).map((l) => l.moveId).slice(0, 4);
+    return this.learnset
+      .filter((l) => l.level <= 1)
+      .map((l) => l.moveId)
+      .slice(0, 4);
   }
 }
 

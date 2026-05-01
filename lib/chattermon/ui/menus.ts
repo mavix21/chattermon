@@ -24,6 +24,12 @@ export const ActionIds = {
   RecoverTarget: "recover_target", // value = partyIndex
   // Blackout explore
   SafeExplore: "safe_explore",
+  // Team management
+  SetLead: "set_lead", // value = partyIndex
+  // Care / mood
+  Care: "care",
+  Feed: "feed",       // value = partyIndex (lead = 0)
+  Play: "play",       // costs 1⚡, has cooldown
 } as const;
 
 export type ActionId = (typeof ActionIds)[keyof typeof ActionIds];

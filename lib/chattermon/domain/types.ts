@@ -33,6 +33,15 @@ export type ChattermonId = string;
 
 export type StatusId = "paralyzed" | "burn" | "freeze" | "confused" | "asleep";
 
+export type MoodId =
+  | "ecstatic"
+  | "happy"
+  | "content"
+  | "bored"
+  | "tired"
+  | "sad"
+  | "angry";
+
 export type MoveCategory = "physical" | "focus" | "status";
 
 export type StatKey = "hp" | "atk" | "def" | "foc" | "spd";

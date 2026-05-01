@@ -25,6 +25,11 @@ import {
   refillEnergy,
   requiresTarget,
   toSnapshot,
+  tickMood,
+  applyLeadMoodEvent,
+  applyMoodEvent,
+  playWaitMs,
+  PLAY_ENERGY_COST,
 } from "./chattermon";
 import { ItemRegistry } from "./chattermon/domain/item";
 import { playAsciiAnimation } from "./chattermon/animate";
@@ -32,7 +37,7 @@ import { EGG_HATCH_FRAMES } from "./chattermon/egg";
 import { BattleArena } from "./chattermon/domain/battle/arena";
 import type { BattleStep, BattleFrame } from "./chattermon/domain/battle/arena";
 import { BiomeRegistry } from "./chattermon/content/biomes";
-import { Actions, Button, Card, CardText } from "chat";
+import { Actions, Button, Card } from "chat";
 import type { SentMessage, Thread } from "chat";
 import type {
   ChattermonSnapshot,
@@ -45,6 +50,9 @@ import {
 } from "./chattermon/ui/battle-scene";
 import { hatchInfoTable } from "./chattermon/ui/hatch-table";
 import { ACTION_ICON } from "./chattermon/ui/icons";
+import { PLAY_FRAMES } from "./chattermon/ui/play-animation";
+import { spendEnergy } from "./chattermon/services/energy.service";
+import { moodFromValue } from "./chattermon/domain/mood";
 
 // Threads we receive from event handlers are unparameterized; using
 // `Thread<any, any>` here lets us pass them directly to helpers without
@@ -245,12 +253,132 @@ bot.onAction(ActionIds.Party, async (event) => {
   if (!event.thread) return;
   const player = await new PlayerRepository(event.thread).load();
   if (!player) return;
+  await event.thread.post(Cards.partyCard(player));
+});
+
+bot.onAction(ActionIds.SetLead, async (event) => {
+  if (!event.thread || !event.value) return;
+  const partyIndex = parseInt(event.value, 10);
+  if (Number.isNaN(partyIndex) || partyIndex <= 0) return;
+  const repo = new PlayerRepository(event.thread);
+  const player = await repo.load();
+  if (!player || partyIndex >= player.party.length) return;
+  // Mood boost if the swapped mon is bored or angry ("noticed")
+  let swappedSnap = player.party[partyIndex];
+  const swappedMood = moodFromValue(swappedSnap.mood ?? 50);
+  if (swappedMood === "bored" || swappedMood === "angry") {
+    swappedSnap = applyMoodEvent(swappedSnap, { kind: "noticed" });
+  }
+  // Rotate chosen index to front, preserving relative order of the rest.
+  const rest = player.party.filter((_, i) => i !== partyIndex);
+  const newParty = [swappedSnap, ...rest];
+  const next = { ...player, party: newParty };
+  await repo.save(next);
+  const name = fromSnapshot(newParty[0]).displayName();
+  await event.thread.post(`★ ${name} is now your lead chattermon!`);
+  await event.thread.post(Cards.partyCard(next));
+});
+
+// ── Care / Feed / Play ────────────────────────────────────────────────
+
+bot.onAction(ActionIds.Care, async (event) => {
+  if (!event.thread) return;
+  const player = await new PlayerRepository(event.thread).load();
+  if (!player) return;
+  await event.thread.post(Cards.careCard(player));
+});
+
+bot.onAction(ActionIds.Feed, async (event) => {
+  if (!event.thread) return;
+  const repo = new PlayerRepository(event.thread);
+  let player = await repo.load();
+  if (!player || player.party.length === 0) return;
+
+  // Find first healing berry in inventory
+  const berryEntry = Object.entries(player.inventory).find(([id, n]) => {
+    if (n <= 0) return false;
+    const item = ItemRegistry.tryGet(id);
+    return (
+      item?.kind === "berry" &&
+      typeof item.healPct === "number" &&
+      item.healPct > 0
+    );
+  });
+  if (!berryEntry) {
+    await event.thread.post("No berries to feed! Find some while exploring.");
+    return;
+  }
+
+  const [berryId] = berryEntry;
+  const berry = ItemRegistry.get(berryId);
+  const lead = fromSnapshot(player.party[0]);
+  const maxHp = lead.stats().hp;
+  const healAmt = Math.max(1, Math.floor(maxHp * 0.05)); // Feed heals 5% HP
+  lead.hp = Math.min(maxHp, lead.hp + healAmt);
+
+  // Update inventory
+  const inv = {
+    ...player.inventory,
+    [berryId]: (player.inventory[berryId] ?? 0) - 1,
+  };
+  if (inv[berryId] <= 0) delete inv[berryId];
+
+  // Apply mood event
+  let leadSnap = toSnapshot(lead);
+  leadSnap = {
+    ...leadSnap,
+    mood: Math.min(100, Math.round((leadSnap.mood ?? 50) + 10)),
+    lastInteractedAt: Date.now(),
+  };
+  player = {
+    ...player,
+    party: [leadSnap, ...player.party.slice(1)],
+    inventory: inv,
+  };
+  await repo.save(player);
+
+  const c = fromSnapshot(leadSnap);
   await event.thread.post(
-    Card({
-      title: `${ACTION_ICON.team} Team`,
-      children: [CardText(Cards.partyCardMarkdown(player))],
-    }),
+    `${ACTION_ICON.feed} Fed ${c.displayName()} a ${berry.name}! +${healAmt} HP\nMood: ${c.moodEmoji()} ${c.moodId()}`,
   );
+  await event.thread.post(Cards.careCard(player));
+});
+
+bot.onAction(ActionIds.Play, async (event) => {
+  if (!event.thread) return;
+  const repo = new PlayerRepository(event.thread);
+  let player = await repo.load();
+  if (!player || player.party.length === 0) return;
+
+  // Check cooldown
+  const cooldown = playWaitMs(player.party[0]);
+  if (cooldown > 0) {
+    await event.thread.post(
+      `${ACTION_ICON.play} ${fromSnapshot(player.party[0]).displayName()} needs a break! Try again in ${Math.ceil(cooldown / 60000)}m.`,
+    );
+    return;
+  }
+
+  // Spend energy
+  const afterEnergy = spendEnergy(player, PLAY_ENERGY_COST);
+  if (!afterEnergy) {
+    await event.thread.post("Not enough energy to play!");
+    return;
+  }
+  player = afterEnergy;
+
+  // Play animation
+  await playAsciiAnimation(event.thread as AnyThread, PLAY_FRAMES, 700);
+
+  // Apply mood event
+  player = applyLeadMoodEvent(player, { kind: "played" });
+  await repo.save(player);
+
+  const c = fromSnapshot(player.party[0]);
+  await event.thread.post(
+    `${ACTION_ICON.play} ${c.displayName()} had a blast! Mood: ${c.moodEmoji()} ${c.moodId()}`,
+  );
+  await event.thread.post(Cards.careCard(player));
 });
 
 bot.onAction(ActionIds.Biome, async (event) => {
@@ -419,7 +547,7 @@ async function firstTimeHatch(
   await thread.post({ markdown: "Welcome to **Chattermon**! 👾" });
   await wait(800);
   await thread.post("A creature is trying to hatch from your thread…");
-  const baby = hatchService.hatch({ biome: "meadow", level: 5 });
+  const baby = hatchService.hatchStarter({ level: 5 });
   await playAsciiAnimation(
     thread,
     [...EGG_HATCH_FRAMES, ...baby.species.frames],
@@ -495,18 +623,19 @@ async function handleExplore(
     }
   }
 
-  await repo.save(player);
-
   if (r.outcome.kind === "item") {
     const item = ItemRegistry.tryGet(r.outcome.itemId);
     await thread.post({
       markdown: `Found a **${item?.name ?? r.outcome.itemId}**!`,
     });
+    // Mood boost for finding items
+    player = applyLeadMoodEvent(player, { kind: "found_item" });
   }
   if (r.outcome.kind === "egg")
     await thread.post(`🥚 You found a chattermon egg!`);
   if (r.outcome.kind === "flavor") await thread.post(r.outcome.text);
 
+  await repo.save(player);
   await sendMainMenu(thread, player);
 }
 
@@ -514,7 +643,8 @@ async function sendMainMenu(
   thread: AnyThread,
   player: PlayerSnapshot,
 ): Promise<void> {
-  const refilled = refillEnergy(player);
+  let refilled = refillEnergy(player);
+  refilled = tickMood(refilled);
   if (refilled !== player) await new PlayerRepository(thread).save(refilled);
   const lead = refilled.party[0];
   const frame = lead ? fromSnapshot(lead).species.frames[0] : null;
@@ -652,12 +782,27 @@ async function runBattleAnimation(
 
       await wait(700);
       if (result.captured)
-        await thread.post(
-          `${ACTION_ICON.captured} You added **${result.captured.speciesId}** to your team!`,
-        );
+        await thread.post({
+          markdown: `${ACTION_ICON.captured} You added **${result.captured.speciesId}** to your team!`,
+        });
       if (step.xpAwarded) await thread.post(`✨ Gained ${step.xpAwarded} XP.`);
 
+      // Apply mood events based on battle outcome
+      let finalPlayer = result.player;
+      if (step.phase === "victory") {
+        finalPlayer = applyLeadMoodEvent(finalPlayer, { kind: "battle_win" });
+      } else if (step.phase === "captured") {
+        finalPlayer = applyLeadMoodEvent(finalPlayer, { kind: "captured" });
+      } else if (step.phase === "defeat") {
+        finalPlayer = applyLeadMoodEvent(finalPlayer, { kind: "battle_loss" });
+        // Also apply fainted event
+        finalPlayer = applyLeadMoodEvent(finalPlayer, { kind: "fainted" });
+      } else if (step.phase === "fled") {
+        finalPlayer = applyLeadMoodEvent(finalPlayer, { kind: "battle_fled" });
+      }
+
       for (const lvl of result.levelUps) {
+        finalPlayer = applyLeadMoodEvent(finalPlayer, { kind: "level_up" });
         const learnedTxt = lvl.learned.length
           ? `Learned ${lvl.learned.join(", ")}.`
           : "";
@@ -665,7 +810,8 @@ async function runBattleAnimation(
           `🎚️ Lv.${lvl.fromLevel} → Lv.${lvl.toLevel}. ${learnedTxt}`.trim(),
         );
         if (lvl.pendingLearn) {
-          const lead = fromSnapshot(result.player.party[0]);
+          await repo.save(finalPlayer);
+          const lead = fromSnapshot(finalPlayer.party[0]);
           await new UiStateStore(thread).set({
             kind: "learn-move",
             chattermonId: lead.id,
@@ -676,7 +822,8 @@ async function runBattleAnimation(
           return;
         }
       }
-      await sendMainMenu(thread, result.player);
+      await repo.save(finalPlayer);
+      await sendMainMenu(thread, finalPlayer);
       return;
     }
 

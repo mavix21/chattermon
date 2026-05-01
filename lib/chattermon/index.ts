@@ -30,6 +30,14 @@ export {
   requiresTarget,
 } from "./services/item.service";
 export { recover, RECOVER_COST } from "./services/recover.service";
+export {
+  tickMood,
+  applyLeadMoodEvent,
+  applyMoodEvent,
+  playWaitMs,
+  PLAY_COOLDOWN_MS,
+  PLAY_ENERGY_COST,
+} from "./services/mood.service";
 
 export { PlayerRepository, emptyPlayer } from "./persistence/player.repository";
 export { UiStateStore } from "./persistence/ui-state";

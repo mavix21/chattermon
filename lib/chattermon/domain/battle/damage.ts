@@ -7,6 +7,7 @@ import { typeMultiplier, STAB_MULTIPLIER } from "../type-chart";
 import { stageMultiplier, type Stages } from "../stats";
 import type { Chattermon } from "../chattermon";
 import type { Move } from "../move";
+import { moodBattleModifiers, moodFromValue } from "../mood";
 import type { BattleEventBus, BattleSide, DamageEventPayload } from "./events";
 import type { Rng } from "../rng";
 
@@ -56,13 +57,19 @@ export function resolveDamage(ctx: DamageContext): DamageResult {
     random,
   });
 
+  // Mood damage modifier — only for the player's chattermon.
+  const moodDmgMod =
+    ctx.attackerSide === "player"
+      ? moodBattleModifiers(moodFromValue(attacker.mood)).damageMod
+      : 1;
+
   const payload: DamageEventPayload = {
     attacker,
     defender,
     attackerSide: ctx.attackerSide,
     defenderSide: ctx.attackerSide === "player" ? "wild" : "player",
-    base,
-    amount: base,
+    base: Math.round(base * moodDmgMod),
+    amount: Math.round(base * moodDmgMod),
     type: move.type,
     isCrit,
     isPhysical,

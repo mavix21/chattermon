@@ -39,4 +39,7 @@ export const ACTION_ICON = {
   recover: "❤️‍🩹",
   safe: "🧭",
   use: "✨",
+  care: "🎀",
+  feed: "🍎",
+  play: "🎮",
 } as const;

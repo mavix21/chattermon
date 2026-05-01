@@ -19,6 +19,7 @@ import {
 } from "./layout";
 import { fromSnapshot } from "../persistence/serialize";
 import { MoveRegistry } from "../domain/move";
+import { MOOD_EMOJI, moodFromValue } from "../domain/mood";
 import type { ChattermonSnapshot } from "../persistence/snapshots";
 import type { StatusId } from "../domain/types";
 
@@ -124,8 +125,9 @@ export function composeBattleCanvas(input: BattleSceneInput): string {
 
   // Player block: sprite above info line, left-aligned.
   const playerSprite = dedent(p.species.frames[0]);
+  const playerMoodEmoji = MOOD_EMOJI[moodFromValue(input.player.mood ?? 50)];
   const playerInfo = infoLine(
-    p.displayName(),
+    `${p.displayName()} ${playerMoodEmoji}`,
     p.level,
     pHp,
     p.stats().hp,

@@ -13,6 +13,7 @@ import { BattleEventBus, type BattleSide } from "./events";
 import { BattleStateMachine } from "./state-machine";
 import { rollCapture } from "../formulas";
 import { ItemRegistry } from "../item";
+import { moodBattleModifiers, moodFromValue } from "../mood";
 import type { BattleCommand } from "./commands";
 import type { Rng } from "../rng";
 import type { ItemId, StatusId } from "../types";
@@ -211,7 +212,9 @@ export class BattleArena {
     if (this.skippingTurn(this.player, this.playerAsleepTurns, "player"))
       return;
     this.pushLine(`${this.player.displayName()} used ${move.name}!`);
-    if (this.rng.next() * 100 > move.accuracy) {
+    const moodMods = moodBattleModifiers(moodFromValue(this.player.mood));
+    const effectiveAccuracy = move.accuracy * moodMods.accuracyMod;
+    if (this.rng.next() * 100 > effectiveAccuracy) {
       this.pushLine("It missed!");
       return;
     }

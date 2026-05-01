@@ -6,28 +6,28 @@
 const FRAME_1 = String.raw`
    ,~"~"~,    
    {(•ᴥ•)}    
- 🔥‿( )    
+  🔥‿( )    
 `;
 
 // Inhale — eyes squint shut, mane puffs as the cub draws breath.
 const FRAME_2 = String.raw`
   ,~"~"~"~,   
   {{(-o-)}}   
- 🔥‿( )  
+  🔥‿( )  
 `;
 
 // Roar — mane ignites, fireball bursts from the muzzle.
 const FRAME_3 = String.raw`
    ,~"~"~,  
   {{(◉Д◉)}} ༄༄
- 🔥‿( )  
+  🔥‿( )  
 `;
 
 // Afterglow — proud grin, sparks lingering in the mane.
 const FRAME_4 = String.raw`
    ,~"~"~,    
    {(^ᴥ^)}    
- 🔥‿( )  
+  🔥‿( )  
 `;
 
 export const EMBERLEA_FRAMES: readonly string[] = [

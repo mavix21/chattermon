@@ -24,6 +24,8 @@ export interface ChattermonSnapshot {
   status: StatusId | null;
   knownMoves: MoveId[];
   friendship: number;
+  mood: number;              // 0–100
+  lastInteractedAt: number;  // epoch ms
   nickname?: string;
 }
 

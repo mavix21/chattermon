@@ -1,7 +1,7 @@
 // Renderers turning domain objects into chat elements.
 // Pattern: Presentation layer — pure functions, no I/O.
 
-import { Actions, Button, Card, CardText } from "chat";
+import { Actions, Button, Card, CardChild, CardText } from "chat";
 import { asMonospaceFrame } from "../../utils";
 import { Chattermon } from "../domain/chattermon";
 import { ItemRegistry } from "../domain/item";
@@ -10,6 +10,7 @@ import { fromSnapshot } from "../persistence/serialize";
 import { isBagUsable } from "../services/item.service";
 import { allFainted, anyFainted } from "../services/explore.service";
 import { RECOVER_COST } from "../services/recover.service";
+import { PLAY_ENERGY_COST, playWaitMs } from "../services/mood.service";
 import { ACTION_ICON, STATUS_ICON, TYPE_ICON } from "./icons";
 import { ActionIds } from "./menus";
 import { visualWidth } from "./layout";
@@ -27,6 +28,7 @@ export function chattermonCardMarkdown(c: Chattermon, frameIndex = 0): string {
     `HP  ${hpBar}  ${c.hp}/${stats.hp}`,
     `ATK ${pad(stats.atk)}  DEF ${pad(stats.def)}  FOC ${pad(stats.foc)}  SPD ${pad(stats.spd)}`,
     `Nature: ${c.nature.name}    Trait: ${c.trait.name}`,
+    `Mood: ${c.moodEmoji()} ${capitalize(c.moodId())}`,
     c.mutation ? `Mutation: ${c.mutation.name}` : null,
     `Moves: ${c.knownMoves.map((m) => MoveRegistry.get(m).name).join(" / ") || "—"}`,
   ].filter(Boolean) as string[];
@@ -49,9 +51,49 @@ export function partyCardMarkdown(p: PlayerSnapshot): string {
       const c = fromSnapshot(s);
       const stats = c.stats();
       const lead = i === 0 ? "★ " : "  ";
-      return `${lead}**${c.displayName()}** Lv.${c.level} ${TYPE_ICON[c.species.type]} ${c.species.type} — HP ${c.hp}/${stats.hp}`;
+      return `${lead}**${c.displayName()}** Lv.${c.level} ${TYPE_ICON[c.species.type]} ${c.moodEmoji()} — HP ${c.hp}/${stats.hp}`;
     })
     .join("\n");
+}
+
+export function partyCard(p: PlayerSnapshot) {
+  const rows = p.party.flatMap((s, i) => {
+    const c = fromSnapshot(s);
+    const stats = c.stats();
+    const isLead = i === 0;
+    const label = `${isLead ? "★ " : ""}${c.displayName()} Lv.${c.level} ${TYPE_ICON[c.species.type]} ${c.moodEmoji()} — HP ${c.hp}/${stats.hp}`;
+    const children: CardChild[] = [CardText(label)];
+    if (!isLead) {
+      children.push(
+        Actions([
+          Button({
+            id: ActionIds.SetLead,
+            value: i.toString(),
+            label: `★ Set as Lead`,
+          }),
+        ]),
+      );
+    }
+    return children;
+  });
+
+  return Card({
+    title: `${ACTION_ICON.team} Team`,
+    subtitle:
+      p.party.length === 0
+        ? "Your party is empty."
+        : "★ marks your lead chattermon.",
+    children: [
+      ...(p.party.length === 0 ? [CardText("_Your party is empty._")] : rows),
+      Actions([
+        Button({
+          id: ActionIds.Return,
+          value: "main",
+          label: `${ACTION_ICON.back} Return`,
+        }),
+      ]),
+    ],
+  });
 }
 
 export function inventoryMarkdown(p: PlayerSnapshot): string {
@@ -63,6 +105,85 @@ export function inventoryMarkdown(p: PlayerSnapshot): string {
       return `- ${item?.name ?? id} ×${n}`;
     })
     .join("\n");
+}
+
+// Format bag items as a nicely padded ASCII table for display.
+function bagItemsTable(entries: Array<[ItemId, number]>): string {
+  const INNER_WIDTH = 34; // Matches hatchInfoTable for consistent terminal width
+
+  if (entries.length === 0) return "_Bag is empty._";
+
+  const rows = entries.map(([id, n]) => {
+    const item = ItemRegistry.tryGet(id);
+    const name = item?.name ?? id;
+    const qty = `×${n}`;
+    const desc = item?.description ?? "";
+    return { name, qty, desc };
+  });
+
+  const lines: string[] = [];
+  lines.push(boxTop(INNER_WIDTH));
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    // Header line: "Item Name                 x3"
+    const headerPad = Math.max(
+      0,
+      INNER_WIDTH - visualWidth(row.name) - visualWidth(row.qty),
+    );
+    const header = row.name + " ".repeat(headerPad) + row.qty;
+    lines.push(boxRowLeft(header, INNER_WIDTH));
+
+    // Wrapped description indented by 2
+    const wrapWidth = INNER_WIDTH - 2;
+    const words = row.desc.split(" ");
+    let currentLine = "";
+
+    for (const word of words) {
+      const candidate = currentLine ? `${currentLine} ${word}` : word;
+      if (visualWidth(candidate) > wrapWidth) {
+        if (currentLine) {
+          lines.push(boxRowLeft("  " + currentLine, INNER_WIDTH));
+        }
+        currentLine = word;
+      } else {
+        currentLine = candidate;
+      }
+    }
+    if (currentLine) {
+      lines.push(boxRowLeft("  " + currentLine, INNER_WIDTH));
+    }
+
+    if (i < rows.length - 1) {
+      lines.push(boxSep(INNER_WIDTH));
+    }
+  }
+
+  lines.push(boxBottom(INNER_WIDTH));
+  return lines.join("\n");
+}
+
+function padRight(str: string, width: number): string {
+  const pad = Math.max(0, width - visualWidth(str));
+  return str + " ".repeat(pad);
+}
+
+function boxRowLeft(content: string, innerWidth: number): string {
+  let body = content;
+  while (visualWidth(body) > innerWidth) body = body.slice(0, -1);
+  return "│ " + padRight(body, innerWidth) + " │";
+}
+
+function boxTop(w: number): string {
+  return "╭" + "─".repeat(w + 2) + "╮";
+}
+
+function boxSep(w: number): string {
+  return "├" + "─".repeat(w + 2) + "┤";
+}
+
+function boxBottom(w: number): string {
+  return "╰" + "─".repeat(w + 2) + "╯";
 }
 
 export function mainMenuCard(p: PlayerSnapshot, leadFrame: string | null) {
@@ -82,6 +203,7 @@ export function mainMenuCard(p: PlayerSnapshot, leadFrame: string | null) {
     const infoLines = [
       `${TYPE_ICON[c.species.type]} ${c.displayName()}  Lv.${c.level}`,
       `HP ${hpBar} ${c.hp}/${stats.hp}`,
+      `Mood: ${c.moodEmoji()} ${capitalize(c.moodId())}`,
     ];
     const leftWidth = Math.max(...spriteLines.map((l) => visualWidth(l)), 0);
     const rows = Math.max(spriteLines.length, infoLines.length);
@@ -121,6 +243,7 @@ export function mainMenuCard(p: PlayerSnapshot, leadFrame: string | null) {
   // travel with).
   const row2Buttons = [
     Button({ id: ActionIds.Party, label: `${ACTION_ICON.team} Team` }),
+    Button({ id: ActionIds.Care, label: `${ACTION_ICON.care} Care` }),
   ];
   if (!blackedOut) {
     row2Buttons.push(
@@ -193,8 +316,11 @@ export function bagCard(p: PlayerSnapshot) {
     else passive.push(row);
   }
 
+  // Display formatted inventory table first
+  const tableMarkdown = `\`\`\`\n${bagItemsTable(entries)}\n\`\`\``;
+
+  // Then add Use buttons for usable items
   const usableChildren = usable.flatMap((row) => [
-    CardText(`**${row.name}** ×${row.n} — ${row.description}`),
     Actions([
       Button({
         id: ActionIds.BagUse,
@@ -204,21 +330,12 @@ export function bagCard(p: PlayerSnapshot) {
     ]),
   ]);
 
-  const passiveChildren = passive.length
-    ? [
-        CardText("— Battle / Special —"),
-        ...passive.map((row) =>
-          CardText(`**${row.name}** ×${row.n} — ${row.description}`),
-        ),
-      ]
-    : [];
-
   return Card({
     title: `${ACTION_ICON.inventory} Bag`,
     subtitle: "Tap Use to apply an item.",
     children: [
+      CardText(tableMarkdown),
       ...usableChildren,
-      ...passiveChildren,
       Actions([
         Button({
           id: ActionIds.Return,
@@ -370,6 +487,81 @@ function padVisible(line: string, width: number): string {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// ── Care card ──────────────────────────────────────────────────────────
+
+export function careCard(p: PlayerSnapshot) {
+  if (p.party.length === 0) {
+    return Card({
+      title: `${ACTION_ICON.care} Care`,
+      children: [
+        CardText("_No chattermon to care for._"),
+        Actions([
+          Button({
+            id: ActionIds.Return,
+            value: "main",
+            label: `${ACTION_ICON.back} Return`,
+          }),
+        ]),
+      ],
+    });
+  }
+
+  const lead = fromSnapshot(p.party[0]);
+  const stats = lead.stats();
+  const hpBar = bar(lead.hp, stats.hp, 10);
+
+  // Check if player has any berry to feed
+  const hasBerry = Object.entries(p.inventory).some(([id, n]) => {
+    if (n <= 0) return false;
+    const item = ItemRegistry.tryGet(id);
+    return (
+      item?.kind === "berry" &&
+      typeof item.healPct === "number" &&
+      item.healPct > 0
+    );
+  });
+
+  const cooldownMs = playWaitMs(p.party[0]);
+  const canPlay = cooldownMs === 0 && p.energy >= PLAY_ENERGY_COST;
+  const playLabel =
+    cooldownMs > 0
+      ? `${ACTION_ICON.play} Play (${Math.ceil(cooldownMs / 60000)}m cooldown)`
+      : `${ACTION_ICON.play} Play (${PLAY_ENERGY_COST}⚡)`;
+
+  const sprite = lead.species.frames[0] ?? "";
+
+  return Card({
+    title: `${ACTION_ICON.care} Care for ${lead.displayName()}`,
+    subtitle: `Mood: ${lead.moodEmoji()} ${capitalize(lead.moodId())} — HP ${lead.hp}/${stats.hp}`,
+    children: [
+      CardText(asMonospaceFrame(sprite)),
+      CardText(
+        `\`\`\`\nHP  ${hpBar}  ${lead.hp}/${stats.hp}\nMood: ${lead.moodEmoji()} ${capitalize(lead.moodId())}\n\`\`\``,
+      ),
+      Actions([
+        Button({
+          id: ActionIds.Feed,
+          value: "0",
+          label: `${ACTION_ICON.feed} Feed`,
+          disabled: !hasBerry || lead.isFainted(),
+        }),
+        Button({
+          id: ActionIds.Play,
+          label: playLabel,
+          disabled: !canPlay || lead.isFainted(),
+        }),
+      ]),
+      Actions([
+        Button({
+          id: ActionIds.Return,
+          value: "main",
+          label: `${ACTION_ICON.back} Return`,
+        }),
+      ]),
+    ],
+  });
 }
 
 function applyFaintedEyes(sprite: string): string {

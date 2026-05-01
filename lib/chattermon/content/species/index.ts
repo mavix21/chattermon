@@ -10,3 +10,8 @@ import "./talon";
 import "./hoots";
 import "./nibble";
 import "./sprig";
+import "./squeek";
+import "./marcha";
+import "./spook";
+import "./shello";
+import "./glowig";
