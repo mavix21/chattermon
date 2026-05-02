@@ -68,10 +68,16 @@ export function battleSceneCard(input: BattleSceneInput) {
     });
   });
 
+  const moveRowChildren = [];
+  if (moveButtons.length > 0)
+    moveRowChildren.push(Actions(moveButtons.slice(0, 2)));
+  if (moveButtons.length > 2)
+    moveRowChildren.push(Actions(moveButtons.slice(2, 4)));
+
   return Card({
     children: [
       ...children,
-      Actions(moveButtons),
+      ...moveRowChildren,
       Actions([
         Button({
           id: ActionIds.BattleLure,
