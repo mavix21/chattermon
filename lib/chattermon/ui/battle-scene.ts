@@ -116,8 +116,26 @@ export function composeBattleCanvas(input: BattleSceneInput): string {
 
   const W = CANVAS_WIDTH;
 
+  // TODO: find another way to detect move usage than parsing the narration text.
+  // Render attack animations by slightly shifting sprites when they use a move.
+  let wildSprite = dedent(w.species.frames[0]);
+  let playerSprite = dedent(p.species.frames[0]);
+
+  if (input.narration.startsWith(`Wild ${w.displayName()} used `)) {
+    // Push the wild sprite left by appending padding to its right before it gets right-aligned.
+    wildSprite = wildSprite
+      .split("\n")
+      .map((l) => l + "   ")
+      .join("\n");
+  } else if (input.narration.startsWith(`${p.displayName()} used `)) {
+    // Push the player sprite right by prepending padding.
+    playerSprite = playerSprite
+      .split("\n")
+      .map((l) => "   " + l)
+      .join("\n");
+  }
+
   // Wild block: sprite stacked above an info line, right-aligned.
-  const wildSprite = dedent(w.species.frames[0]);
   const wildSpriteBlock = shiftBlockRight(wildSprite, W);
   const wildInfo = infoLine(
     `Wild ${w.displayName()}`,
@@ -130,7 +148,6 @@ export function composeBattleCanvas(input: BattleSceneInput): string {
   const wildBlock = [wildSpriteBlock, rightAlign(wildInfo, W)].join("\n");
 
   // Player block: sprite above info line, left-aligned.
-  const playerSprite = dedent(p.species.frames[0]);
   const playerMoodEmoji = MOOD_EMOJI[moodFromValue(input.player.mood ?? 50)];
   const playerInfo = infoLine(
     `${p.displayName()} ${playerMoodEmoji}`,
